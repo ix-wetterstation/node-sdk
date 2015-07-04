@@ -4,7 +4,9 @@ var fs = require('fs');
 var haml = require('hamljs');
 var async = require('async');
 var _ = require('underscore');
+var sqlite3 = require('sqlite3').verbose();
 var app = express();
+var db = new sqlite3.Database('values.db');
 
 var wetterstationUUID = 'ef1a14d983df';
 var wetterstationServericeUUID = '2000';
@@ -43,6 +45,9 @@ noble.on('discover', function(peripheral) {
 					function readCharacteristic(uuid, cb) {
 						var c = _.find(characteristics, function(e){ return e.uuid == uuid; });
 						// TODO
+						console.log(c);
+
+						//insert into v (hum, temp) values (90,40);
 					}
 
 					console.log(characteristics);
@@ -77,6 +82,43 @@ app.get('/', function (req, res) {
 
 		var html = haml.render(c.toString(), {locals: data});
 		res.end(html);
+	});
+});
+
+function queryDB(lookback, field, cb) {
+	var q = "select strftime('%s',t) as t, " + field + " from v where t > datetime('now', '-" + lookback + " minutes')";
+
+	console.log(q);
+	db.all(q, function(err, rows) {
+		if (err) {
+			res.end(400);
+			return;
+		}
+
+		var values = [];
+		rows.forEach(function(r) {
+			values.push({
+				ts: r.t,
+				v: r[field]
+			});
+		});
+		cb(values);
+	});
+}
+
+// curl -v localhost:12345/api/temp/50
+app.get('/api/temp/:lookback', function (req, res) {
+	var lookback = req.params.lookback;
+	queryDB(lookback, 'temp', function(values) {
+		res.json({values: values});
+	});
+});
+
+// curl -v localhost:12345/api/hum/50
+app.get('/api/hum/:lookback', function (req, res) {
+	var lookback = req.params.lookback;
+	queryDB(lookback, 'hum', function(values) {
+		res.json({values: values});
 	});
 });
 
