@@ -5,7 +5,16 @@ var haml = require('hamljs');
 var _ = require('underscore');
 var sqlite3 = require('sqlite3').verbose();
 var app = express();
-var db = new sqlite3.Database('values.db');
+
+var dbname= 'values.db';
+var db = new sqlite3.Database(dbname);
+
+try {
+	var stats = fs.lstatSync(dbname);
+} catch (e) {
+	var install_sql = fs.readFileSync('./sqlite.sql', 'utf-8');
+	db.run(install_sql);
+}
 
 /*
  * Bluetooth Low-Energy
