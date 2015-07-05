@@ -2,16 +2,10 @@ var noble = require('noble');
 var express = require('express');
 var fs = require('fs');
 var haml = require('hamljs');
-var async = require('async');
 var _ = require('underscore');
 var sqlite3 = require('sqlite3').verbose();
 var app = express();
 var db = new sqlite3.Database('values.db');
-
-var wetterstationUUID = 'ef1a14d983df';
-var wetterstationServericeUUID = '2000';
-var wetterstationCharacteristicTempUUID = '';
-var wetterstationCharacteristicHumUUID = '';
 
 /*
  * Bluetooth Low-Energy
@@ -19,52 +13,32 @@ var wetterstationCharacteristicHumUUID = '';
 noble.on('stateChange', function(state) {
 	console.log('new state: ' + state);
 	if (state === 'poweredOn') {
-		noble.startScanning();
+		noble.startScanning([], true);
 	} else {
 		noble.stopScanning();
 	}
 });
 
 noble.on('discover', function(peripheral) {
-	console.log('Found device with local name: ' + peripheral.advertisement.localName);
-	console.log('advertising the following service uuid\'s: ' + peripheral.advertisement.serviceUuids);
-	console.log(peripheral.uuid);
+	var addr = peripheral.address;
 
-	if (peripheral.uuid !== wetterstationUUID) {
+	var adv = _.indexBy(peripheral.advertisement.serviceData, 'uuid');
+	if (!adv['1809'] || !adv['180f'] || !adv['1809']) {
+		console.log("foo");
 		return;
 	}
 
-	peripheral.connect(function(error) {
-		peripheral.discoverServices([], function(error, services) {
-			function discoverService(s, cb) {
-				console.log(s);
+	var temp = adv['1809'].data.readFloatBE(0);
+	var bat = adv['180f'].data.readUInt8(0)
+//	var hum = adv['XXXX'].data.readFloatLE(0); TODO
+	var hum = 99;
 
-				s.discoverCharacteristics([], function(error, characteristics) {
-					var characteristicIndex = 0;
+	console.log(adv);
+	console.log('addr: ' + addr + ' bat: ' + bat + ' temp: ' + temp);
 
-					function readCharacteristic(uuid, cb) {
-						var c = _.find(characteristics, function(e){ return e.uuid == uuid; });
-						// TODO
-						console.log(c);
-
-						//insert into v (hum, temp) values (90,40);
-					}
-
-					console.log(characteristics);
-
-					// TODO cb maks no sense
-					readCharacteristic(wetterstationCharacteristicTempUUID, cb);
-					readCharacteristic(wetterstationCharacteristicHumUUID, cb);
-					cb();
-				});
-			}
-
-			var s = _.find(services, function(e){ return e.uuid == wetterstationServericeUUID; });
-			discoverService(s ,function(err) {
-				console.log("done");
-			});
-		});
-	});
+	var stmt = db.prepare("INSERT INTO v (temp, hum, bat, addr) VALUES(?,?,?,?)");
+	stmt.run(temp, hum, bat, addr);
+	stmt.finalize();
 });
 
 /*
